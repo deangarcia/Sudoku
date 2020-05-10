@@ -290,6 +290,8 @@ int main()
 	int box_grid_size = sqrt(grid_size);
 	int clue_count = 52;
 
+	srand(time(NULL));
+
 	Board board1;
 	Board board2 = board1;
 	generate_random_board(board2, clue_count);
