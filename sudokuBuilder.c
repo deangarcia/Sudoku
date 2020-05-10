@@ -258,9 +258,76 @@ Cell getCell(Board &board, int id) {
 	return board.cells[row][col];
 }
 
+Cell getCell(Board &board, int row, int col) {
+	return board.cells[row][col];
+}
+
 int getRandomValue(int min, int max) {
 
 	return rand() % max + min;
+}
+
+// Need this so we can safely put random numbers in the diagnol boxes
+// without needing to worry about row and column. Random numbers are important because 
+// we put random numbers in the diagnal when we call the fill remaining cells function which 
+// runs iteratively starting from cell 0,0 and ending on cell 8,8 it will adjust to these random placements
+// sort of like seeding with the rand function.
+// if we dont have this random placement then our first row will always be 1 2 3 4 5 6 7 8 9
+// we cant make the fill remaining cells function place random numbers in cells either because if we did
+// we could be repeating value placement attempts and it would significantly slow down our algorithm. 
+void fill_diagonal_boxes(Board &board)
+{
+    int box_grid_size = sqrt(grid_size);
+	int i, j, k;
+	for(i = 0; i < grid_size; i = i + box_grid_size)
+	{
+		int n; 
+		for(j = 0; j < box_grid_size; j++) 
+		{ 
+			for(k = 0; k < box_grid_size; k++) 
+			{ 
+				do
+				{ 
+					n = rand() % grid_size + 1; 
+				} 
+				while(!valid_cell_box(board, i, i, n)); 
+
+				board.cells[i+j][k+i].value = n; 
+			} 
+		} 
+	} 
+}
+
+// Brute force/final step to generating a valid board function
+int fill_remain_cells(Board &board) 
+{ 
+	int i, j, k;
+	for(i = 0; i < grid_size; i++)
+    {
+        for(j = 0; j < grid_size; j++)
+        {
+            if(board.cells[i][j].value == 0)
+            {
+                for(k = 1; k <= grid_size; k++)
+                {
+                    if(valid_cell_placement(board, i, j, k))
+                    {
+						board.cells[i][j].value = k;
+                        if(fill_remain_cells(board))
+                        {
+                            return 1;
+                        }
+                        else
+                        {
+							board.cells[i][j].value = 0;
+                        }
+                    }
+                }
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 void generate_random_board(Board &board, int clue_count) {
@@ -280,9 +347,13 @@ void generate_random_board(Board &board, int clue_count) {
 	}
 }
 
-void fill_values(Board &board, int clue_count)
+// Was thinking about just stopping mid way through the puzzle generation
+// but you have to completely fill in the board before you can validate
+// it, this is why instead I go back and randomly remove cell values.
+void fill_values(Board &board)
 {
-	generate_random_board(board, clue_count);
+	fill_diagonal_boxes(board);
+	fill_remain_cells(board);
 }
 
 int main()
@@ -294,17 +365,18 @@ int main()
 
 	Board board1;
 	Board board2 = board1;
-	generate_random_board(board2, clue_count);
+	fill_values(board2);
+	//generate_random_board(board2, clue_count);
 	srand(time(NULL));
 
-	generate_random_board(board1, clue_count);
+	fill_values(board1);
 	printBoard(board1);
 	printf("\n");
 	printBoard(board2);
 
 //	board2 = solve_board_bruteforce2(board2, 0, 0);
-	printf("\n");
-	printBoard(board2);
+	//printf("\n");
+	//printBoard(board2);
 
 // 	omp_set_num_threads(8);
 // #pragma omp parallel
