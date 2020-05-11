@@ -1,14 +1,23 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
+//#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-//#include "omp.h"
+#include "omp.h"
 #include <time.h>
+#include <fstream>
+//#include <iostream>
+
+using namespace std;
 
 
 int const grid_size = 9;
+int clue_count = 17;
+int runtime_threshold = 1000;
+
+double t_ser;
 
 class Cell {
 public:
@@ -36,9 +45,8 @@ public:
 				newCell.value = 0;
 
 				for (int k = 0; k < grid_size; k++) {
-					// Why are we assigning to one shouldn't it be 0 the markups 
-					// thinking: The markup array contains all numbers that cant go in the associated cell right?
-					//           so why is 1 right off the back being eliminated from all new cells.
+					//this is a bool array with 1 for valid and 0 for invalid
+					//newCell.markup = {0,0,1,1} -> 3,4 are valid entries
 					newCell.markup[k] = 1;
 				}
 				cells[i][j] = newCell;
@@ -49,11 +57,18 @@ public:
 
 void printBoard(Board &board) {
 	printf("\n");
+	int digits = 0;
+	int mag = 1;
+	while (mag < grid_size) {
+		digits++;
+		mag *= 10;
+	}
+
 	for (int i = 0; i < grid_size; i++)
 	{
 		for (int j = 0; j < grid_size; j++)
 		{
-			int val = board.cells[i][j].value;
+			int val = board.cells[j][i].value;
 			if (val == 0) {
 				printf(" _");
 			}
@@ -64,6 +79,33 @@ void printBoard(Board &board) {
 		}
 		printf("\n");
 	}
+}
+
+void printBoard(Board &board, ofstream &output) {
+	//output << ",";
+	int digits = 0;
+	int mag = 1;
+	while (mag < grid_size) {
+		digits++;
+		mag *= 10;
+	}
+
+	for (int i = 0; i < grid_size; i++)
+	{
+		for (int j = 0; j < grid_size; j++)
+		{
+			int val = board.cells[j][i].value;
+			if (val == 0) {
+				output << " _";
+			}
+			else {
+				output << " " << val;
+			}
+
+		}
+		output << " |";
+	}
+	output << ",";
 }
 
 // Function for validating a cells value content. For example 
@@ -89,14 +131,16 @@ int valid_cell_box(Board board, int row, int col, int n)
 	// Force row and col values to be one of the row col values 
 	// shown in the comments that way we beggining looping at the first
 	// cell of the square.
-	row = row - row % box_grid_size;
-	col = col - col % box_grid_size;
+	int box_row = row - row % box_grid_size;
+	int box_col = col - col % box_grid_size;
 
 	for (i = 0; i < box_grid_size; i++)
 	{
 		for (j = 0; j < box_grid_size; j++)
 		{
-			if (board.cells[i + row][j + col].value == n)
+			int cell_row = i + box_row;
+			int cell_col = j + box_col;
+			if (board.cells[cell_col][cell_row].value == n && !(cell_row == row && cell_col == col))
 			{
 				return 0; // Return 0 on fail
 			}
@@ -105,12 +149,12 @@ int valid_cell_box(Board board, int row, int col, int n)
 	return 1; // Return 1 on success
 }
 
-int valid_cell_row(Board board, int row, int n)
+int valid_cell_row(Board board, int col, int row, int n)
 {
 	int j;
 	for (j = 0; j < grid_size; j++)
 	{
-		if (board.cells[row][j].value == n)
+		if (board.cells[j][row].value == n && col != j)
 		{
 			return 0;
 		}
@@ -118,12 +162,12 @@ int valid_cell_row(Board board, int row, int n)
 	return 1;
 }
 
-int valid_cell_col(Board board, int col, int n)
+int valid_cell_col(Board board, int col, int row, int n)
 {
 	int i;
 	for (i = 0; i < grid_size; i++)
 	{
-		if (board.cells[i][col].value == n)
+		if (board.cells[col][i].value == n && row != i)
 		{
 			return 0;
 		}
@@ -134,11 +178,14 @@ int valid_cell_col(Board board, int col, int n)
 int valid_cell_placement(Board board, int row, int col, int n)
 {
 	int valid = 0;
-	if (valid_cell_col(board, col, n) && valid_cell_row(board, row, n) && valid_cell_box(board, row, col, n))
+	int box_valid = valid_cell_box(board, row, col, n);
+	int row_valid = valid_cell_row(board, col, row, n);
+	int col_valid = valid_cell_col(board, col, row, n);
+	if (box_valid && row_valid && col_valid)
 	{
 		valid = 1;
 	}
-	printf("valid?%d %d %d %d\n", valid, col, row, n);
+	//printf("valid? %d (%d, %d) %d %d %d\n", n, col, row, box_valid, col_valid, row_valid);
 	return valid;
 }
 
@@ -146,63 +193,14 @@ int check_valid_board(Board board) {
 	int valid = 1;
 	for (int i = 0; i < grid_size; i++) {
 		for (int j = 0; j < grid_size; j++) {
-			int temp = valid_cell_placement(board, j, i, board.cells[i][j].value);
-			if (temp == 0) valid = -1;
+			//int temp = valid_cell_placement(board, j, i, board.cells[i][j].value);
+			if (!valid_cell_placement(board, j, i, board.cells[i][j].value)) valid = -1;
 		}
 	}
 	return valid;
 }
 
-// Board solve_board_bruteforce2(Board board, int row, int col)
-// {
-// 	Board bCopy = board;
-// 	for (int j = row; j < grid_size; j++) {
-// 		for (int i = col; i < grid_size; i++) {
-// 			if (board.cells[i][j].value == 0) {
-// 				int value = 1;
-// 				while (value <= grid_size) {
-// 					int valid = valid_cell_placement(board, j, i, value);
-// 					if (valid == 1) {
-// 						bCopy.cells[i][j].value = value;
-// 						printBoard(bCopy);
-// 						if (i == grid_size - 1 && j == grid_size - 1) {
-// 							//check valid board
-// 							if (check_valid_board(bCopy) == -1) {
-// 								bCopy.cells[0][0].value = -1;
-// 							}
-// 							return bCopy;
-// 						}
-// 						else {
-// 							int nextCol = i;
-// 							int nextRow = j;
-// 							if (i < grid_size - 1) {
-// 								nextCol++;
-// 							}
-// 							else if (j < grid_size - 1) {
-// 								nextCol = 0;
-// 								nextRow++;
-// 							}
-// 							printf("%d %d\n", nextCol, nextRow);
-// 							Board temp = solve_board_bruteforce2(bCopy, nextRow, nextCol);
-// 							if (temp.cells[0][0].value != -1) return temp;
-// 						}
-// 					}
-// 					value++;
-// 					if (value > grid_size && valid != 1) {
-// 						bCopy.cells[0][0].value = -1;
-// 						return bCopy;
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-// 	//check valid board
-// 	int valid = check_valid_board(bCopy);
-// 	if (valid == -1) {
-// 		bCopy.cells[0][0].value = valid;
-// 	}
-// 	return bCopy;
-// }
+
 
 int* add_to_values(int values[]) {
 	int done = 0;
@@ -225,41 +223,18 @@ int* add_to_values(int values[]) {
 	return values;
 }
 
-// Board brute_force(Board board) {
 
-// 	int *values = (int*)malloc(grid_size*grid_size * sizeof(int));
-// 	for (int i = 0; i < grid_size*grid_size; i++) {
-// 		int col = i % grid_size;
-// 		int row = i / grid_size;
-// 		if (board.cells[col][row].value != 0) {
-// 			values[i] = -1;
-// 		}
-// 		else {
-// 			values[i] = 1;
-// 		}
-// 	}
-
-// 	int done = 0;
-// 	while (done != 1) {
-
-
-// 		done = 1;
-// 		for (int i = 0; i < grid_size*grid_size; i++) {
-// 			if (values[i] < grid_size && values[i] > 0) done = 0;
-// 		}
-// 	}
-// }
 
 
 Cell getCell(Board &board, int id) {
 	int col = id % grid_size;
 	int row = id / grid_size;
 
-	return board.cells[row][col];
+	return board.cells[col][row];
 }
 
 Cell getCell(Board &board, int row, int col) {
-	return board.cells[row][col];
+	return board.cells[col][row];
 }
 
 int getRandomValue(int min, int max) {
@@ -277,113 +252,176 @@ int getRandomValue(int min, int max) {
 // we could be repeating value placement attempts and it would significantly slow down our algorithm. 
 void fill_diagonal_boxes(Board &board)
 {
-    int box_grid_size = sqrt(grid_size);
+	int box_grid_size = sqrt(grid_size);
 	int i, j, k;
-	for(i = 0; i < grid_size; i = i + box_grid_size)
+	for (i = 0; i < grid_size; i = i + box_grid_size)
 	{
-		int n; 
-		for(j = 0; j < box_grid_size; j++) 
-		{ 
-			for(k = 0; k < box_grid_size; k++) 
-			{ 
+		int n;
+		for (j = 0; j < box_grid_size; j++)
+		{
+			for (k = 0; k < box_grid_size; k++)
+			{
 				do
-				{ 
-					n = rand() % grid_size + 1; 
-				} 
-				while(!valid_cell_box(board, i, i, n)); 
+				{
+					n = rand() % grid_size + 1;
+				} while (!valid_cell_box(board, k + i, i + j, n));
 
-				board.cells[i+j][k+i].value = n; 
-			} 
-		} 
-	} 
-}
-
-// Brute force/final step to generating a valid board function
-int fill_remain_cells(Board &board) 
-{ 
-	int i, j, k;
-	for(i = 0; i < grid_size; i++)
-    {
-        for(j = 0; j < grid_size; j++)
-        {
-            if(board.cells[i][j].value == 0)
-            {
-                for(k = 1; k <= grid_size; k++)
-                {
-                    if(valid_cell_placement(board, i, j, k))
-                    {
-						board.cells[i][j].value = k;
-                        if(fill_remain_cells(board))
-                        {
-                            return 1;
-                        }
-                        else
-                        {
-							board.cells[i][j].value = 0;
-                        }
-                    }
-                }
-                return 0;
-            }
-        }
-    }
-    return 1;
-}
-
-void generate_random_board(Board &board, int clue_count) {
-	while (clue_count > 0) {
-		int cellId = getRandomValue(0, grid_size * grid_size);
-		Cell cell = getCell(board, cellId);
-
-		if (cell.value == 0) {
-			int randVal = getRandomValue(1, grid_size);
-			if (valid_cell_placement(board, cell.row, cell.col, randVal) == 1) {
-				cell.value = randVal;
-				board.cells[cell.row][cell.col].value = randVal;
-				clue_count -= 1;
+				board.cells[i + j][k + i].value = n;
 			}
-
 		}
 	}
 }
+
+void fill_diagonal_box(Board &board)
+{
+	int box_grid_size = sqrt(grid_size);
+	int i, j, k;
+	i = 0;
+
+	int n;
+	for (j = 0; j < box_grid_size; j++)
+	{
+		for (k = 0; k < box_grid_size; k++)
+		{
+			do
+			{
+				n = rand() % grid_size + 1;
+			} while (!valid_cell_box(board, k + i, i + j, n));
+
+			board.cells[i + j][k + i].value = n;
+		}
+	}
+
+
+}
+
+// Brute force/final step to generating a valid board function
+int fill_remain_cells(Board &board)
+{
+	int i, j, k;
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+				for (k = 1; k <= grid_size; k++)
+				{
+					if (valid_cell_placement(board, j, i, k))
+					{
+						board.cells[i][j].value = k;
+						//printBoard(board);
+						if (fill_remain_cells(board))
+						{
+							return 1;
+						}
+						else
+						{
+							board.cells[i][j].value = 0;
+							if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
+						}
+					}
+				}
+				return 0;
+			}
+		}
+	}
+	return 1;
+}
+
+
 
 // Was thinking about just stopping mid way through the puzzle generation
 // but you have to completely fill in the board before you can validate
 // it, this is why instead I go back and randomly remove cell values.
 void fill_values(Board &board)
 {
-	fill_diagonal_boxes(board);
+	//fill_diagonal_boxes(board);
+	fill_diagonal_box(board);
 	fill_remain_cells(board);
+}
+
+Board generate_random_board(int clue_count) {
+	Board board;
+	t_ser = omp_get_wtime();
+	int cell_count = grid_size * grid_size;
+	fill_values(board);
+	printf("valid? %d\n", check_valid_board(board));
+	int count = 0;
+	while (cell_count > clue_count) {
+		int cellId = getRandomValue(0, grid_size * grid_size);
+		Cell cell = getCell(board, cellId);
+
+		if (board.cells[cell.col][cell.row].value != 0) {
+			board.cells[cell.col][cell.row].value = 0;
+			//printBoard(board);
+			count++;
+			//printf("count: %d\n", count);
+			cell_count--;
+		}
+	}
+
+	return board;
+}
+
+
+void run_experiment() {
+	ofstream output;
+	output.open("data.csv");
+	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid \n";
+	srand(omp_get_wtime());
+	for (int i = 0; i < 100; i++) {
+		printf("run# %d", i + 1);
+		output << i + 1 << "," << grid_size << "," << clue_count << ",";
+		//srand(time(NULL));
+
+		Board board = generate_random_board(clue_count);
+		printBoard(board, output);
+		t_ser = omp_get_wtime();
+		fill_remain_cells(board);
+		double elapsedTime = omp_get_wtime() - t_ser;
+		output << elapsedTime << ",";
+
+
+		printBoard(board, output);
+
+		int valid_solution = check_valid_board(board);
+		output << valid_solution << ",";
+		output << "\n";
+	}
+	output.close();
 }
 
 int main()
 {
-	int box_grid_size = sqrt(grid_size);
-	int clue_count = 52;
+	printf("-----------------------------------------test begins----------------------------------------------\n");
 
-	srand(time(NULL));
+	run_experiment();
 
-	Board board1;
-	Board board2 = board1;
-	fill_values(board2);
-	//generate_random_board(board2, clue_count);
-	srand(time(NULL));
+	//int box_grid_size = sqrt(grid_size);
+	//int clue_count = 52;
 
-	fill_values(board1);
-	printBoard(board1);
-	printf("\n");
-	printBoard(board2);
+	//srand(time(NULL));
 
-//	board2 = solve_board_bruteforce2(board2, 0, 0);
+	//Board board1 = generate_random_board(clue_count);
+	//Board board2 = board1;
+	//fill_remain_cells(board2);
+	//
+	//
+	//
+	//
+	//printBoard(board1);
+	////printf("valid? %d", check_valid_board(board1));
 	//printf("\n");
 	//printBoard(board2);
+	//printf("valid? %d", check_valid_board(board2));
 
-// 	omp_set_num_threads(8);
-// #pragma omp parallel
-// 	{
-// 		int tid = omp_get_thread_num();
-// 		printf("%d\n", tid);
-// 	}
+	// 	omp_set_num_threads(8);
+	// #pragma omp parallel
+	// 	{
+	// 		int tid = omp_get_thread_num();
+	// 		printf("%d\n", tid);
+	// 	}
 
 	return 0;
 }
