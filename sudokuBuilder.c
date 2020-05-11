@@ -15,7 +15,7 @@ using namespace std;
 
 int const grid_size = 9;
 int clue_count = 17;
-int runtime_threshold = 1000;
+int runtime_threshold = 100;
 
 double t_ser;
 
@@ -329,6 +329,57 @@ int fill_remain_cells(Board &board)
 	return 1;
 }
 
+Board solved_board;
+int solved = 0;
+
+int fill_remain_cells(Board &board, int newk)
+{
+
+
+
+	int i, j;
+
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+
+				for (int k = newk; k <= grid_size; k++)
+				{
+					if (solved) return 0;
+					if (valid_cell_placement(board, j, i, k))
+					{
+						board.cells[i][j].value = k;
+						//printBoard(board);
+						if (fill_remain_cells(board, 1))
+						{
+							return 1;
+						}
+						else
+						{
+							board.cells[i][j].value = 0;
+							if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
+						}
+					}
+				}
+				return 0;
+
+
+			}
+		}
+	}
+	if (!solved) {
+		solved = 1;
+		solved_board = board;
+	}
+
+
+	return 1;
+
+
+}
 
 
 // Was thinking about just stopping mid way through the puzzle generation
@@ -364,32 +415,96 @@ Board generate_random_board(int clue_count) {
 	return board;
 }
 
+void brute_force_parallel(Board board) {
+	omp_set_num_threads(grid_size);
+#pragma omp parallel
+	{
+#pragma omp for
+		for (int i = 0; i < grid_size; i++) {
+			Board board1 = board;
+			fill_remain_cells(board1, i + 1);
+		}
+	}
+}
+
 
 void run_experiment() {
 	ofstream output;
 	output.open("data.csv");
-	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid \n";
+	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid, alg2Time, alg2Solution, alg2Valid \n";
 	srand(omp_get_wtime());
+	Board board1, board2, board3, board4;
+	double elapsedTime;
+	int valid_solution;
 	for (int i = 0; i < 100; i++) {
+		solved = 0;
+
 		printf("run# %d", i + 1);
 		output << i + 1 << "," << grid_size << "," << clue_count << ",";
 		//srand(time(NULL));
 
 		Board board = generate_random_board(clue_count);
+		solved_board = board;
 		printBoard(board, output);
+
+
+		//brute force serial------------------------------------------------------------
+		board1 = board;
+
 		t_ser = omp_get_wtime();
-		fill_remain_cells(board);
-		double elapsedTime = omp_get_wtime() - t_ser;
+		fill_remain_cells(board1);
+		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
 
-		printBoard(board, output);
+		printBoard(board1, output);
 
-		int valid_solution = check_valid_board(board);
+		valid_solution = check_valid_board(board1);
 		output << valid_solution << ",";
+
+
+		//brute force parallel-------------------------------------------------------
+		board2 = board;
+		//printBoard(board2, output);
+
+		t_ser = omp_get_wtime();
+
+		brute_force_parallel(board2);
+		elapsedTime = omp_get_wtime() - t_ser;
+		output << elapsedTime << ",";
+
+
+		printBoard(solved_board, output);
+
+		valid_solution = check_valid_board(solved_board);
+		if (!solved) valid_solution = -1;
+		output << valid_solution << ",";
+
+
 		output << "\n";
 	}
 	output.close();
+}
+
+
+
+void testing() {
+
+	Board board1 = generate_random_board(clue_count);
+	printBoard(board1);
+
+	brute_force_parallel(board1);
+
+
+	printBoard(solved_board);
+	printf("valid? %d", check_valid_board(solved_board));
+}
+
+void res() {
+#pragma omp parallel
+	{
+		res();
+	}
 }
 
 int main()
@@ -397,24 +512,9 @@ int main()
 	printf("-----------------------------------------test begins----------------------------------------------\n");
 
 	run_experiment();
+	//testing();
 
-	//int box_grid_size = sqrt(grid_size);
-	//int clue_count = 52;
 
-	//srand(time(NULL));
-
-	//Board board1 = generate_random_board(clue_count);
-	//Board board2 = board1;
-	//fill_remain_cells(board2);
-	//
-	//
-	//
-	//
-	//printBoard(board1);
-	////printf("valid? %d", check_valid_board(board1));
-	//printf("\n");
-	//printBoard(board2);
-	//printf("valid? %d", check_valid_board(board2));
 
 	// 	omp_set_num_threads(8);
 	// #pragma omp parallel
