@@ -15,7 +15,8 @@ using namespace std;
 
 int const grid_size = 9;
 int clue_count = 17;
-int runtime_threshold = 5;
+int runtime_threshold = 100;
+int const experiment_ephochs = 100;
 
 double t_ser;
 
@@ -37,6 +38,7 @@ public:
 
 class Board {
 public:
+	int valid = 1;
 	Cell cells[grid_size][grid_size];
 	int rows[grid_size][grid_size]; //rows[rowID][markup] markup = {0,0,1,1} -> 3,4 are valid entries
 	int cols[grid_size][grid_size]; //cols[colID][markup] 
@@ -334,15 +336,16 @@ int valid_cell_placement(Board board, int row, int col, int n)
 	return valid;
 }
 
-int check_valid_board(Board board) {
-	int valid = 1;
+Board check_valid_board(Board board) {
+	//int valid = 1;
+	board.valid = 1;
 	for (int i = 0; i < grid_size; i++) {
 		for (int j = 0; j < grid_size; j++) {
 			//int temp = valid_cell_placement(board, j, i, board.cells[i][j].value);
-			if (!valid_cell_placement(board, j, i, board.cells[i][j].value)) valid = -1;
+			if (!valid_cell_placement(board, j, i, board.cells[i][j].value)) board.valid = -1; // valid = -1;
 		}
 	}
-	return valid;
+	return board;
 }
 
 
@@ -506,9 +509,9 @@ int fill_remain_cells(Board &board, int newk)
 
 
 
-int fill_cells_markup(Board &board)
+Board fill_cells_markup(Board board, int use_forced_cells)
 {
-	//board.check_forced_cells();
+	if (use_forced_cells)board.check_forced_cells();
 	int i, j, k;
 	for (j = 0; j < grid_size; j++)
 	{
@@ -527,25 +530,28 @@ int fill_cells_markup(Board &board)
 					board.add_value(value, j, i);
 					//printBoard(board);
 					//print_all_markup(board);
-
-
-					if (fill_cells_markup(board))
+					//Board rBoard;// = board;
+					Board rBoard = fill_cells_markup(board, use_forced_cells);
+					if (rBoard.valid == 1)
 					{
-						return 1;
+						//printBoard(rBoard);
+						return rBoard;
 					}
 					else
 					{
 						board.remove_value(board.cells[i][j].value, j, i);
-
-						if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
+						board.valid = -1;
+						if (omp_get_wtime() - t_ser > runtime_threshold) return board;
 					}
 					//}
 				}
-				return 0;
+				board.valid = -1;
+				return board;
 			}
 		}
 	}
-	return 1;
+	board.valid = 1;
+	return board;
 }
 
 
@@ -564,7 +570,7 @@ Board generate_random_board(int clue_count) {
 	t_ser = omp_get_wtime();
 	int cell_count = grid_size * grid_size;
 	fill_values(board);
-	int valid_board = check_valid_board(board);
+	int valid_board = check_valid_board(board).valid;
 	printf("valid? %d\n", valid_board);
 	if (valid_board == 1) {
 		int count = 0;
@@ -612,7 +618,7 @@ void run_experiment() {
 	Board board1, board2, board3, board4;
 	double elapsedTime;
 	int valid_solution;
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < experiment_ephochs; i++) {
 		solved = 0;
 
 		printf("run# %d", i + 1);
@@ -635,40 +641,55 @@ void run_experiment() {
 
 		printBoard(board1, output);
 
-		valid_solution = check_valid_board(board1);
+		valid_solution = check_valid_board(board1).valid;
 		output << valid_solution << ",";
 
 
-		//brute force parallel-------------------------------------------------------
-		board2 = board;
-		//printBoard(board2, output);
+		////brute force parallel-------------------------------------------------------
+		//board2 = board;
+		////printBoard(board2, output);
 
-		t_ser = omp_get_wtime();
+		//t_ser = omp_get_wtime();
 
-		brute_force_parallel(board2);
-		elapsedTime = omp_get_wtime() - t_ser;
-		output << elapsedTime << ",";
+		//brute_force_parallel(board2);
+		//elapsedTime = omp_get_wtime() - t_ser;
+		//output << elapsedTime << ",";
 
 
-		printBoard(solved_board, output);
+		//printBoard(solved_board, output);
 
-		valid_solution = check_valid_board(solved_board);
-		if (!solved) valid_solution = -1;
-		output << valid_solution << ",";
+		//valid_solution = check_valid_board(solved_board).valid;
+		//if (!solved) valid_solution = -1;
+		//output << valid_solution << ",";
 
 		//markup serial------------------------------------------------------------
 		board3 = board;
 
 		t_ser = omp_get_wtime();
 		board3.generate_markup();
-		fill_cells_markup(board3);
+		board3 = fill_cells_markup(board3, 0);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
 
 		printBoard(board3, output);
 
-		valid_solution = check_valid_board(board3);
+		valid_solution = check_valid_board(board3).valid;
+		output << valid_solution << ",";
+
+		//markup serial------------------------------------------------------------
+		board4 = board;
+
+		t_ser = omp_get_wtime();
+		board4.generate_markup();
+		board4 = fill_cells_markup(board4, 1);
+		elapsedTime = omp_get_wtime() - t_ser;
+		output << elapsedTime << ",";
+
+
+		printBoard(board4, output);
+
+		valid_solution = check_valid_board(board4).valid;
 		output << valid_solution << ",";
 
 		output << "\n";
@@ -693,12 +714,12 @@ void testing() {
 	printBoard(board1);
 	board1.generate_markup();
 	board1.check_forced_cells();
-	print_all_markup(board1);
-	fill_cells_markup(board1);
+	//print_all_markup(board1);
+	board1 = fill_cells_markup(board1, 0);
 	//int valid_board = ;
 	printf("valid? %d\n", check_valid_board(board1));
 	printBoard(board1);
-	print_all_markup(board1);
+	//print_all_markup(board1);
 }
 
 int* res() {
