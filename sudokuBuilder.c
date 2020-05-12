@@ -15,7 +15,7 @@ using namespace std;
 
 int const grid_size = 9;
 int clue_count = 17;
-int runtime_threshold = 100;
+int runtime_threshold = 5;
 
 double t_ser;
 
@@ -24,7 +24,7 @@ public:
 	int value;
 	int row;
 	int col;
-	int markup[grid_size];
+	int markup[grid_size + 1];
 	Cell() {
 
 	}
@@ -38,22 +38,167 @@ public:
 class Board {
 public:
 	Cell cells[grid_size][grid_size];
+	int rows[grid_size][grid_size]; //rows[rowID][markup] markup = {0,0,1,1} -> 3,4 are valid entries
+	int cols[grid_size][grid_size]; //cols[colID][markup] 
+	int boxes[grid_size][grid_size]; //boxes[boxID][markup]
 	Board() {
 		for (int i = 0; i < grid_size; i++) {
 			for (int j = 0; j < grid_size; j++) {
 				Cell newCell(0, i, j);
 				newCell.value = 0;
 
-				for (int k = 0; k < grid_size; k++) {
+				for (int k = 0; k < grid_size + 1; k++) {
 					//this is a bool array with 1 for valid and 0 for invalid
 					//newCell.markup = {0,0,1,1} -> 3,4 are valid entries
 					newCell.markup[k] = 1;
 				}
 				cells[i][j] = newCell;
+				rows[i][j] = 1;
+				cols[i][j] = 1;
+				boxes[i][j] = 1;
+
 			}
 		}
 	}
+	int get_box_id(int row, int col) {
+		int box_size = sqrt(grid_size);
+		int box_row = row / box_size;
+		int box_col = col / box_size;
+		return box_col + box_row * box_size;
+	}
+	Cell getCell(int id) {
+		int col = id % grid_size;
+		int row = id / grid_size;
+
+		return cells[col][row];
+	}
+	/*int* get_row_markup(int row) {
+		return rows[row];
+	}
+	int* get_col_markup(int col) {
+		return cols[col];
+	}
+	int* get_box_markup(int row, int col) {
+		int box_id = get_box_id(row, col);
+		return boxes[box_id];
+	}*/
+	Cell get_markup(int row, int col) {
+		Cell cell = cells[col][row];
+		//int markup[grid_size + 1];
+		int box_id = get_box_id(row, col);
+		int markup_size = 0;
+		for (int i = 1; i < grid_size + 1; i++) {
+			//printf("%d\n", i);
+			if (rows[row][i - 1] == 1 && cols[col][i - 1] == 1 && boxes[box_id][i - 1] == 1 && cells[col][row].value == 0)
+			{
+				//markup[i] = 1;
+
+				//cell.markup[i] = 1;
+				cells[col][row].markup[i] = 1;
+				markup_size++;
+			}
+			else {
+				//cell.markup[i] = 0;
+				cells[col][row].markup[i] = 0;
+				//markup[i] = 0;
+			}
+		}
+		//markup[0] = markup_size;
+		cells[col][row].markup[0] = markup_size;
+		return cells[col][row];
+	}
+	int get_kth(int* markup, int k) {
+		int count = 0;
+		int index = 0;
+		while (count < k) {
+
+			if (markup[index + 1] == 1) {
+				count++;
+			}
+			index++;
+		}
+		return index;
+	}
+
+	void add_value(int value, int row, int col) {
+		int box_id = get_box_id(row, col);
+		//printf("%d\n", value);
+		cells[col][row].value = value;
+		rows[row][value - 1] = 0;
+		cols[col][value - 1] = 0;
+		boxes[box_id][value - 1] = 0;
+	}
+
+	void remove_value(int value, int row, int col) {
+		int box_id = get_box_id(row, col);
+		cells[col][row].value = 0;
+		rows[row][value - 1] = 1;
+		cols[col][value - 1] = 1;
+		boxes[box_id][value - 1] = 1;
+	}
+
+	void generate_markup() {
+		for (int i = 0; i < grid_size; i++) {
+			for (int j = 0; j < grid_size; j++) {
+				if (cells[i][j].value != 0) add_value(cells[i][j].value, j, i);
+			}
+		}
+	}
+
+	void check_forced_cells() {
+		//generate_markup();
+		int forced_count = 0;
+		for (int i = 0; i < grid_size; i++) {
+			for (int j = 0; j < grid_size; j++) {
+				if (cells[j][i].value == 0 && get_markup(i, j).markup[0] == 1) {
+					int value = get_kth(cells[j][i].markup, 1);
+					add_value(value, i, j);
+					forced_count++;
+				}
+			}
+		}
+		//if (forced_count > 0) check_forced_cells();
+	}
+
 };
+
+void print_markup(Board board, int row, int col) {
+	Cell markup = board.get_markup(row, col);
+	printf("markup (%d, %d) ", col, row);
+	for (int i = 0; i < grid_size + 1; i++) {
+		printf("%d ", markup.markup[i]);
+		//printf(" %d ", board.rows[row][i]);
+	}
+	printf(" | ");
+
+	for (int i = 0; i < grid_size; i++) {
+		//printf("%d ", markup.markup[i]);
+		printf(" %d ", board.rows[row][i]);
+	}
+	printf(" | ");
+	for (int i = 0; i < grid_size; i++) {
+		//printf("%d ", markup.markup[i]);
+		printf(" %d ", board.cols[col][i]);
+	}
+	printf(" | ");
+
+	int box = board.get_box_id(row, col);
+	printf(" %d - ", box);
+	for (int i = 0; i < grid_size; i++) {
+		//printf("%d ", markup.markup[i]);
+
+		printf(" %d ", board.boxes[box][i]);
+	}
+	printf("\n");
+}
+void print_all_markup(Board board) {
+	for (int i = 0; i < grid_size; i++) {
+		for (int j = 0; j < grid_size; j++) {
+			print_markup(board, i, j);
+		}
+	}
+	printf("\n");
+}
 
 void printBoard(Board &board) {
 	printf("\n");
@@ -202,40 +347,20 @@ int check_valid_board(Board board) {
 
 
 
-int* add_to_values(int values[]) {
-	int done = 0;
-	int index = grid_size * grid_size - 1;
-	while (done != 1) {
-
-		if (values[index] == -1) {
-			index++;
-		}
-		else if (values[index] < grid_size - 1) {
-			values[index]++;
-			return values;
-		}
-		else {
-			values[index] = 1;
-			index++;
-		}
-
-	}
-	return values;
-}
 
 
 
-
-Cell getCell(Board &board, int id) {
-	int col = id % grid_size;
-	int row = id / grid_size;
-
-	return board.cells[col][row];
-}
-
-Cell getCell(Board &board, int row, int col) {
-	return board.cells[col][row];
-}
+//
+//Cell getCell(Board &board, int id) {
+//	int col = id % grid_size;
+//	int row = id / grid_size;
+//
+//	return board.cells[col][row];
+//}
+//
+//Cell getCell(Board &board, int row, int col) {
+//	return board.cells[col][row];
+//}
 
 int getRandomValue(int min, int max) {
 
@@ -377,8 +502,50 @@ int fill_remain_cells(Board &board, int newk)
 
 
 	return 1;
+}
 
 
+
+int fill_cells_markup(Board &board)
+{
+	//board.check_forced_cells();
+	int i, j, k;
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+				Cell cell = board.get_markup(j, i);
+				int markup_count = cell.markup[0];
+				for (k = 1; k <= markup_count; k++)
+				{
+					int value = board.get_kth(cell.markup, k);
+
+					//if (valid_cell_placement(board, j, i, value))
+					//{
+					board.add_value(value, j, i);
+					//printBoard(board);
+					//print_all_markup(board);
+
+
+					if (fill_cells_markup(board))
+					{
+						return 1;
+					}
+					else
+					{
+						board.remove_value(board.cells[i][j].value, j, i);
+
+						if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
+					}
+					//}
+				}
+				return 0;
+			}
+		}
+	}
+	return 1;
 }
 
 
@@ -397,20 +564,29 @@ Board generate_random_board(int clue_count) {
 	t_ser = omp_get_wtime();
 	int cell_count = grid_size * grid_size;
 	fill_values(board);
-	printf("valid? %d\n", check_valid_board(board));
-	int count = 0;
-	while (cell_count > clue_count) {
-		int cellId = getRandomValue(0, grid_size * grid_size);
-		Cell cell = getCell(board, cellId);
+	int valid_board = check_valid_board(board);
+	printf("valid? %d\n", valid_board);
+	if (valid_board == 1) {
+		int count = 0;
+		while (cell_count > clue_count) {
+			int cellId = getRandomValue(0, grid_size * grid_size);
+			Cell cell = board.getCell(cellId);
 
-		if (board.cells[cell.col][cell.row].value != 0) {
-			board.cells[cell.col][cell.row].value = 0;
-			//printBoard(board);
-			count++;
-			//printf("count: %d\n", count);
-			cell_count--;
+			if (board.cells[cell.col][cell.row].value != 0) {
+				board.cells[cell.col][cell.row].value = 0;
+				//board.remove_value(row, col);
+				//printBoard(board);
+				count++;
+				//printf("count: %d\n", count);
+				cell_count--;
+			}
 		}
 	}
+	else {
+		printBoard(board);
+		return generate_random_board(clue_count);
+	}
+
 
 	return board;
 }
@@ -431,7 +607,7 @@ void brute_force_parallel(Board board) {
 void run_experiment() {
 	ofstream output;
 	output.open("data.csv");
-	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid, alg2Time, alg2Solution, alg2Valid \n";
+	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid, alg2Time, alg2Solution, alg2Valid, alg3Time, alg3Solution, alg3Valid \n";
 	srand(omp_get_wtime());
 	Board board1, board2, board3, board4;
 	double elapsedTime;
@@ -480,6 +656,20 @@ void run_experiment() {
 		if (!solved) valid_solution = -1;
 		output << valid_solution << ",";
 
+		//markup serial------------------------------------------------------------
+		board3 = board;
+
+		t_ser = omp_get_wtime();
+		board3.generate_markup();
+		fill_cells_markup(board3);
+		elapsedTime = omp_get_wtime() - t_ser;
+		output << elapsedTime << ",";
+
+
+		printBoard(board3, output);
+
+		valid_solution = check_valid_board(board3);
+		output << valid_solution << ",";
 
 		output << "\n";
 	}
@@ -488,23 +678,39 @@ void run_experiment() {
 
 
 
+
+
 void testing() {
 
+	t_ser = omp_get_wtime();
+	srand(time(NULL));
+
 	Board board1 = generate_random_board(clue_count);
+
+
+	/*Board board1;
+	fill_values(board1);*/
 	printBoard(board1);
-
-	brute_force_parallel(board1);
-
-
-	printBoard(solved_board);
-	printf("valid? %d", check_valid_board(solved_board));
+	board1.generate_markup();
+	board1.check_forced_cells();
+	print_all_markup(board1);
+	fill_cells_markup(board1);
+	//int valid_board = ;
+	printf("valid? %d\n", check_valid_board(board1));
+	printBoard(board1);
+	print_all_markup(board1);
 }
 
-void res() {
-#pragma omp parallel
-	{
-		res();
+int* res() {
+	//#pragma omp parallel
+	//	{
+	//		res();
+	//	}
+	int test[3]; // = { 8,9,3 };;
+	for (int i = 0; i < 3; i++) {
+		test[i] = i;
 	}
+	return test;
 }
 
 int main()
@@ -514,6 +720,11 @@ int main()
 	run_experiment();
 	//testing();
 
+	/*int* test = res();
+	for (int i = 0; i < 3; i++) {
+
+		printf("%d ", test[0 ]);
+	}*/
 
 
 	// 	omp_set_num_threads(8);
