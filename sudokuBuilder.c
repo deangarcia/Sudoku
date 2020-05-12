@@ -1,6 +1,9 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
+// SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
+//
+
 //#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +16,8 @@
 using namespace std;
 
 
-int const grid_size = 9;
-int clue_count = 53;
+int const grid_size = 16;
+int clue_count = 54;
 int runtime_threshold = 100;
 int const experiment_ephochs = 100;
 
@@ -82,9 +85,9 @@ public:
 					//int markup_count = cell.markup[0];
 					//for (k = 1; k <= markup_count; k++)
 					//{
-	// 				// *******Instead of iterating through each cell just go row by row looking for sets
-	// 				// *********then go column by column loooking for sets 
-	// 				// *********then go square to square looking for sets
+	// 				// Instead of iteratin through each cell just go row by row looking for sets
+	// 				// then go column by column loooking for sets 
+	// 				// then go square to square looking for sets
 	// 				Cell markup = p_get_markup(i, j);
 	// 				for (int i = 0; i < grid_size + 1; i++) 
 	// 				{
@@ -155,6 +158,26 @@ public:
 	}
 
 	Cell p_get_markup(int row, int col) {
+
+		//int markup[grid_size + 1];
+		int box_id = get_box_id(row, col);
+		int markup_size = 0;
+		int i;
+		#pragma omp parallel shared(markup_size) private(i)
+		{
+			#pragma omp for reduction(+:markup_size), schedule(static)
+			for (i = 1; i < grid_size + 1; i++) {
+				if (rows[row][i - 1] == 1 && cols[col][i - 1] == 1 && boxes[box_id][i - 1] == 1 && cells[col][row].value == 0)
+				{
+					cells[col][row].markup[i] = 1;
+					markup_size++;
+				}
+				else {
+					cells[col][row].markup[i] = 0;
+				}
+			}
+		}
+		cells[col][row].markup[0] = markup_size;
 		return cells[col][row];
 	}
 
@@ -187,46 +210,12 @@ public:
 		boxes[box_id][value - 1] = 1;
 	}
  
-	void set_markup()
-	{
-		int i, j, k;
-		int markup_size;
-		#pragma omp parallel private(i, j, k)
-		{
-			#pragma omp for reduction(+:markup_size), schedule(static)
-			for (j = 0; j < grid_size; j++)
-			{
-				for (i = 0; i < grid_size; i++)
-				{
-					if (cells[i][j].value == 0)
-					{
-						int box_id = get_box_id(row, col);
-						markup_size = 0;
-						for (k = 1; k < grid_size + 1; k++) 
-						{
-							if (rows[j][k - 1] == 1 && cols[i][k - 1] == 1 && boxes[box_id][k - 1] == 1 && cells[i][j].value == 0)
-							{
-								cells[i][j].markup[k] = 1;
-								markup_size++;
-							}
-							else {
-								cells[i][j].markup[k] = 0;
-							}
-						}
-						cells[i][j].markup[0] = markup_size;
-					}
-				}
-			}
-		}
-	}
-
 	void generate_markup() {
 		for (int i = 0; i < grid_size; i++) {
 			for (int j = 0; j < grid_size; j++) {
 				if (cells[i][j].value != 0) add_value(cells[i][j].value, j, i);
 			}
 		}
-		set_markup();
 	}
 
 	void check_forced_cells() {
@@ -533,44 +522,7 @@ int fill_remain_cells(Board &board, int newk)
 	return 1;
 }
 
-Board parallel_fill_cells(Board board, int use_forced_cells)
-{
-	if (use_forced_cells) board.check_forced_cells();
-	int i, j, k;
 
-	for (j = 0; j < grid_size; j++)
-	{
-		for (i = 0; i < grid_size; i++)
-		{
-			if (board.cells[i][j].value == 0)
-			{
-				Cell cell = board.p_get_markup(j, i);
-				int markup_count = cell.markup[0];
-				for (k = 1; k <= markup_count; k++)
-				{
-					int value = board.get_kth(cell.markup, k);
-
-					board.add_value(value, j, i);
-					Board rBoard = parallel_fill_cells(board, use_forced_cells);
-					if (rBoard.valid == 1)
-					{
-						return rBoard;
-					}
-					else
-					{
-						board.remove_value(board.cells[i][j].value, j, i);
-						board.valid = -1;
-						if (omp_get_wtime() - t_ser > runtime_threshold) return board;
-					}
-				}
-				board.valid = -1;
-				return board;
-			}
-		}
-	}
-	board.valid = 1;
-	return board;
-}
 
 Board fill_cells_markup(Board board, int use_forced_cells)
 {
@@ -582,7 +534,7 @@ Board fill_cells_markup(Board board, int use_forced_cells)
 		{
 			if (board.cells[i][j].value == 0)
 			{
-				Cell cell = board.get_markup(j, i);
+				Cell cell = board.p_get_markup(j, i);
 				int markup_count = cell.markup[0];
 				for (k = 1; k <= markup_count; k++)
 				{
@@ -673,9 +625,9 @@ void testingPremptive()
 	solved_board = board;
 	printBoard(board);
 	board.generate_markup();
-	//board = fill_cells_markup(board, 0);
-	//printBoard(board);
-	print_all_markup(board);
+	board = fill_cells_markup(board, 0);
+	printBoard(board);
+	//print_all_markup(board);
 	//preemptive_sets(board);
 }
 
