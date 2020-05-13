@@ -1,7 +1,7 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#include "pch.h"
+//#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -491,6 +491,7 @@ int brute_force(Board &board)
 int escape = 0;
 int parallel_brute_force_loop(Board &board, int startk, int endk)
 {
+
 	int i, j, k;
 	for (j = 0; j < grid_size; j++)
 	{
@@ -498,7 +499,7 @@ int parallel_brute_force_loop(Board &board, int startk, int endk)
 		{
 			if (board.cells[i][j].value == 0)
 			{
-
+				if (solved) return 0;
 				for (k = startk; k <= grid_size; k++)
 				{
 					//printf("Tid %d\n", omp_get_thread_num());
@@ -537,6 +538,7 @@ int parallel_brute_force_loop(Board &board, int startk, int endk)
 
 int fill_remain_cells(Board &board, int newk, int endk)
 {
+	//
 	int i, j;
 
 	for (j = 0; j < grid_size; j++)
@@ -626,6 +628,7 @@ int fill_cells_markup(Board &board, int use_forced_cells)
 
 int fill_cells_markup_parallel_loop(Board &board, int use_forced_cells, int startk, int endk)
 {
+
 	if (use_forced_cells)board.check_forced_cells();
 	int i, j, k;
 	for (j = 0; j < grid_size; j++)
@@ -639,6 +642,7 @@ int fill_cells_markup_parallel_loop(Board &board, int use_forced_cells, int star
 				//#pragma omp parallel
 				{
 					//#pragma for
+					if (solved) return 0;
 					for (k = startk; k <= markup_count && k <= endk; k++)
 					{
 						//printf("%d\n", k);
@@ -913,19 +917,19 @@ void testing_brute_force() {
 	//print_all_markup(board1);
 }
 
-int* res() {
-#pragma omp parallel
-	{
-		res();
-
-
-	}
-	int test[3]; // = { 8,9,3 };;
-	for (int i = 0; i < 3; i++) {
-		test[i] = i;
-	}
-	return test;
-}
+//int* res() {
+//#pragma omp parallel
+//	{
+//		res();
+//
+//
+//	}
+//	int test[3]; // = { 8,9,3 };;
+//	for (int i = 0; i < 3; i++) {
+//		test[i] = i;
+//	}
+//	return test;
+//}
 
 int main()
 {
