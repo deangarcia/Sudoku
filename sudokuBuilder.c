@@ -1,7 +1,7 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#include "pch.h"
+//#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -15,9 +15,9 @@ using namespace std;
 
 int const grid_size = 4;
 int clue_count = 5;
-int runtime_threshold = 100;
-int const experiment_ephochs = 5;
-int const P = 200;
+int runtime_threshold = 10;
+int const experiment_ephochs = 100;
+int const P = 9;
 
 double t_ser;
 
@@ -504,9 +504,8 @@ int brute_force(Board &board)
 }
 
 int escape = 0;
-int parallel_brute_force(Board board)
+int parallel_brute_force_loop(Board &board, int startk, int endk)
 {
-	//omp_set_num_threads(P);
 	int i, j, k;
 	for (j = 0; j < grid_size; j++)
 	{
@@ -514,29 +513,26 @@ int parallel_brute_force(Board board)
 		{
 			if (board.cells[i][j].value == 0)
 			{
-#pragma omp parallel
-				{
-#pragma for //private(k)
-					for (k = 1; k <= grid_size; k++)
-					{
-						//printf("Tid %d\n", omp_get_thread_num());
-						board.cells[i][j].value = k;
-						//printBoard(board);
-						if (parallel_brute_force(board) == 1)
-						{
-							//printBoard(board);
-							solved = 1;
-							solved_board = board;
-						}
-						else
-						{
-							board.cells[i][j].value = 0;
-							if (omp_get_wtime() - t_ser > runtime_threshold) escape = 1;
-						}
 
-						if (escape || solved) k = grid_size + 1;
+				for (k = startk; k <= grid_size; k++)
+				{
+					//printf("Tid %d\n", omp_get_thread_num());
+					board.cells[i][j].value = k;
+					//printBoard(board);
+					if (parallel_brute_force_loop(board, 1, grid_size) == 1)
+					{
+						////printBoard(board);
+						//solved = 1;
+						//solved_board = board;
+						return 1;
 					}
-					//escape = 1;
+					else
+					{
+						board.cells[i][j].value = 0;
+						if (omp_get_wtime() - t_ser > runtime_threshold) return 0; // escape = 1;
+					}
+
+					//if (escape || solved) k = grid_size + 1;
 				}
 				return 0;
 			}
@@ -554,7 +550,7 @@ int parallel_brute_force(Board board)
 
 
 
-int fill_remain_cells(Board &board, int newk)
+int fill_remain_cells(Board &board, int newk, int endk)
 {
 	int i, j;
 
@@ -565,14 +561,14 @@ int fill_remain_cells(Board &board, int newk)
 			if (board.cells[i][j].value == 0)
 			{
 
-				for (int k = newk; k <= grid_size; k++)
+				for (int k = newk; k <= endk; k++)
 				{
 					if (solved) return 0;
 					if (valid_cell_placement(board, j, i, k))
 					{
 						board.cells[i][j].value = k;
 						//printBoard(board);
-						if (fill_remain_cells(board, 1))
+						if (fill_remain_cells(board, 1, grid_size))
 						{
 							return 1;
 						}
@@ -612,7 +608,7 @@ int fill_cells_markup(Board &board, int use_forced_cells)
 			{
 				Cell cell = board.get_markup(j, i);
 				int markup_count = cell.markup[0];
-				for (k = 1; k <= markup_count; k++)
+				for (k = 1; k <= grid_size; k++)
 				{
 					int value = board.get_kth(cell.markup, k);
 
@@ -645,7 +641,7 @@ int fill_cells_markup(Board &board, int use_forced_cells)
 	return 1;
 }
 
-int fill_cells_markup_parallel(Board board, int use_forced_cells)
+int fill_cells_markup_parallel_loop(Board &board, int use_forced_cells, int startk, int endk)
 {
 	if (use_forced_cells)board.check_forced_cells();
 	int i, j, k;
@@ -657,10 +653,10 @@ int fill_cells_markup_parallel(Board board, int use_forced_cells)
 			{
 				Cell cell = board.get_markup(j, i);
 				int markup_count = cell.markup[0];
-#pragma omp parallel
+				//#pragma omp parallel
 				{
-#pragma for
-					for (k = 1; k <= markup_count; k++)
+					//#pragma for
+					for (k = startk; k <= markup_count && k <= endk; k++)
 					{
 						//printf("%d\n", k);
 						//printf("Tid %d\n", omp_get_thread_num());
@@ -671,21 +667,22 @@ int fill_cells_markup_parallel(Board board, int use_forced_cells)
 						board.add_value(value, j, i);
 						//printBoard(board);
 
-						int rBoard = fill_cells_markup_parallel(board, use_forced_cells);
+						int rBoard = fill_cells_markup_parallel_loop(board, use_forced_cells, 1, grid_size);
 						if (rBoard == 1)
 						{
 							//printBoard(rBoard);
 							//solved = 1;
 							//solved_board = board;
+							return 1;
 						}
 						else
 						{
 							board.remove_value(board.cells[i][j].value, j, i);
 							board.valid = -1;
-							if (omp_get_wtime() - t_ser > runtime_threshold) escape = 1;
+							if (omp_get_wtime() - t_ser > runtime_threshold) return 0;// escape = 1;
 						}
 
-						if (escape || solved) k = grid_size + 1;
+						//if (escape || solved) k = grid_size + 1;
 					}
 					//board.valid = -1;
 				}
@@ -749,11 +746,33 @@ void brute_force_parallel(Board board) {
 #pragma omp for
 		for (int i = 0; i < grid_size; i++) {
 			Board board1 = board;
-			fill_remain_cells(board1, i + 1);
+			fill_remain_cells(board1, i + 1, i + 2);
+		}
+	}
+}
+void parallel_brute_force(Board board) {
+	//omp_set_num_threads(grid_size);
+#pragma omp parallel
+	{
+#pragma omp for
+		for (int i = 0; i < grid_size; i++) {
+			Board board1 = board;
+			parallel_brute_force_loop(board1, i + 1, i + 2);
 		}
 	}
 }
 
+void fill_cells_markup_parallel(Board board, int use_forced_cells) {
+	//omp_set_num_threads(grid_size);
+#pragma omp parallel
+	{
+#pragma omp for
+		for (int i = 0; i < grid_size; i++) {
+			Board board1 = board;
+			fill_cells_markup_parallel_loop(board1, use_forced_cells, i + 1, i + 2);
+		}
+	}
+}
 
 void run_experiment() {
 	ofstream output;
@@ -779,7 +798,8 @@ void run_experiment() {
 		board1 = board;
 
 		t_ser = omp_get_wtime();
-		brute_force(board1);
+		//brute_force(board1);
+		fill_remain_cells(board1);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
@@ -796,7 +816,8 @@ void run_experiment() {
 
 		t_ser = omp_get_wtime();
 
-		parallel_brute_force(board2);
+		//parallel_brute_force(board2);
+		brute_force_parallel(board2);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
@@ -889,9 +910,9 @@ void testing_brute_force() {
 
 	/*Board board1;
 	fill_values(board1);*/
-	/*printBoard(board2);
+	printBoard(board2);
 	brute_force_parallel(board2);
-	printBoard(solved_board);*/
+	printBoard(solved_board);
 
 	t_ser = omp_get_wtime();
 	printBoard(board1);
