@@ -1,7 +1,7 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-//#include "pch.h"
+#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -13,11 +13,11 @@
 using namespace std;
 
 
-int const grid_size = 4;
-int clue_count = 5;
+int const grid_size = 16;
+int clue_count = 54;
 int runtime_threshold = 10;
 int const experiment_ephochs = 100;
-int const P = 9;
+int const P = 16;
 
 double t_ser;
 
@@ -365,21 +365,6 @@ int check_valid_board(Board board) {
 	return valid;
 }
 
-
-
-
-//
-//Cell getCell(Board &board, int id) {
-//	int col = id % grid_size;
-//	int row = id / grid_size;
-//
-//	return board.cells[col][row];
-//}
-//
-//Cell getCell(Board &board, int row, int col) {
-//	return board.cells[col][row];
-//}
-
 int getRandomValue(int min, int max) {
 
 	return rand() % max + min;
@@ -580,8 +565,6 @@ int fill_remain_cells(Board &board, int newk, int endk)
 					}
 				}
 				return 0;
-
-
 			}
 		}
 	}
@@ -608,7 +591,7 @@ int fill_cells_markup(Board &board, int use_forced_cells)
 			{
 				Cell cell = board.get_markup(j, i);
 				int markup_count = cell.markup[0];
-				for (k = 1; k <= grid_size; k++)
+				for (k = 1; k <= markup_count; k++)
 				{
 					int value = board.get_kth(cell.markup, k);
 
@@ -745,6 +728,7 @@ void brute_force_parallel(Board board) {
 	{
 #pragma omp for
 		for (int i = 0; i < grid_size; i++) {
+			//printf("Tid %d\n", omp_get_thread_num());
 			Board board1 = board;
 			fill_remain_cells(board1, i + 1, i + 2);
 		}
@@ -756,6 +740,7 @@ void parallel_brute_force(Board board) {
 	{
 #pragma omp for
 		for (int i = 0; i < grid_size; i++) {
+			//printf("Tid %d\n", omp_get_thread_num());
 			Board board1 = board;
 			parallel_brute_force_loop(board1, i + 1, i + 2);
 		}
@@ -768,6 +753,7 @@ void fill_cells_markup_parallel(Board board, int use_forced_cells) {
 	{
 #pragma omp for
 		for (int i = 0; i < grid_size; i++) {
+			//printf("Tid %d\n", omp_get_thread_num());
 			Board board1 = board;
 			fill_cells_markup_parallel_loop(board1, use_forced_cells, i + 1, i + 2);
 		}
@@ -881,9 +867,9 @@ void testing() {
 
 	/*Board board1;
 	fill_values(board1);*/
-	/*printBoard(board2);
-	brute_force_parallel(board2);
-	printBoard(solved_board);*/
+	printBoard(board2);
+	fill_cells_markup(board2, 0);
+	printBoard(board2);
 
 	solved = 0;
 	t_ser = omp_get_wtime();
