@@ -1,7 +1,7 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-//#include "pch.h"
+#include "pch.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -13,12 +13,14 @@
 using namespace std;
 
 
-int const grid_size = 9;
-int clue_count = 17;
+int const grid_size = 4;
+int clue_count = 5;
 int runtime_threshold = 100;
-int const experiment_ephochs = 100;
+int const experiment_ephochs = 5;
+int const P = 200;
 
 double t_ser;
+
 
 class Cell {
 public:
@@ -163,6 +165,9 @@ public:
 	}
 
 };
+
+Board solved_board;
+int solved = 0;
 
 void print_markup(Board board, int row, int col) {
 	Cell markup = board.get_markup(row, col);
@@ -336,19 +341,29 @@ int valid_cell_placement(Board board, int row, int col, int n)
 	return valid;
 }
 
-Board check_valid_board(Board board) {
-	//int valid = 1;
-	board.valid = 1;
+//Board check_valid_board(Board board) {
+//	//int valid = 1;
+//	board.valid = 1;
+//	for (int i = 0; i < grid_size; i++) {
+//		for (int j = 0; j < grid_size; j++) {
+//			//int temp = valid_cell_placement(board, j, i, board.cells[i][j].value);
+//			if (!valid_cell_placement(board, j, i, board.cells[i][j].value)) board.valid = -1; // valid = -1;
+//		}
+//	}
+//	return board;
+//}
+
+int check_valid_board(Board board) {
+	int valid = 1;
+	//board.valid = 1;
 	for (int i = 0; i < grid_size; i++) {
 		for (int j = 0; j < grid_size; j++) {
 			//int temp = valid_cell_placement(board, j, i, board.cells[i][j].value);
-			if (!valid_cell_placement(board, j, i, board.cells[i][j].value)) board.valid = -1; // valid = -1;
+			if (!valid_cell_placement(board, j, i, board.cells[i][j].value))  valid = -1;
 		}
 	}
-	return board;
+	return valid;
 }
-
-
 
 
 
@@ -457,14 +472,90 @@ int fill_remain_cells(Board &board)
 	return 1;
 }
 
-Board solved_board;
-int solved = 0;
+int brute_force(Board &board)
+{
+	int i, j, k;
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+				for (k = 1; k <= grid_size; k++)
+				{
+					board.cells[i][j].value = k;
+					//printBoard(board);
+					if (brute_force(board) == 1)
+					{
+						return 1;
+					}
+					else
+					{
+						board.cells[i][j].value = 0;
+						if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
+					}
+
+				}
+				return 0;
+			}
+		}
+	}
+	return check_valid_board(board);
+}
+
+int escape = 0;
+int parallel_brute_force(Board board)
+{
+	//omp_set_num_threads(P);
+	int i, j, k;
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+#pragma omp parallel
+				{
+#pragma for //private(k)
+					for (k = 1; k <= grid_size; k++)
+					{
+						//printf("Tid %d\n", omp_get_thread_num());
+						board.cells[i][j].value = k;
+						//printBoard(board);
+						if (parallel_brute_force(board) == 1)
+						{
+							//printBoard(board);
+							solved = 1;
+							solved_board = board;
+						}
+						else
+						{
+							board.cells[i][j].value = 0;
+							if (omp_get_wtime() - t_ser > runtime_threshold) escape = 1;
+						}
+
+						if (escape || solved) k = grid_size + 1;
+					}
+					//escape = 1;
+				}
+				return 0;
+			}
+		}
+	}
+	int valid = 0;
+	if (check_valid_board(board) == 1) valid = 1;
+	if (!solved && valid) {
+		//printBoard(board);
+		solved_board = board;
+		solved = 1;
+	}
+	return valid;
+}
+
+
 
 int fill_remain_cells(Board &board, int newk)
 {
-
-
-
 	int i, j;
 
 	for (j = 0; j < grid_size; j++)
@@ -498,18 +589,18 @@ int fill_remain_cells(Board &board, int newk)
 			}
 		}
 	}
-	if (!solved) {
+	int valid = check_valid_board(board);
+	if (!solved && valid) {
 		solved = 1;
 		solved_board = board;
 	}
 
 
-	return 1;
+	return valid;
 }
 
 
-
-Board fill_cells_markup(Board board, int use_forced_cells)
+int fill_cells_markup(Board &board, int use_forced_cells)
 {
 	if (use_forced_cells)board.check_forced_cells();
 	int i, j, k;
@@ -531,33 +622,87 @@ Board fill_cells_markup(Board board, int use_forced_cells)
 					//printBoard(board);
 					//print_all_markup(board);
 					//Board rBoard;// = board;
-					Board rBoard = fill_cells_markup(board, use_forced_cells);
-					if (rBoard.valid == 1)
+					int rBoard = fill_cells_markup(board, use_forced_cells);
+					if (rBoard == 1)
 					{
 						//printBoard(rBoard);
-						return rBoard;
+						return 1;
 					}
 					else
 					{
 						board.remove_value(board.cells[i][j].value, j, i);
 						board.valid = -1;
-						if (omp_get_wtime() - t_ser > runtime_threshold) return board;
+						if (omp_get_wtime() - t_ser > runtime_threshold) return 0;
 					}
 					//}
 				}
 				board.valid = -1;
-				return board;
+				return 0;
 			}
 		}
 	}
 	board.valid = 1;
-	return board;
+	return 1;
 }
 
+int fill_cells_markup_parallel(Board board, int use_forced_cells)
+{
+	if (use_forced_cells)board.check_forced_cells();
+	int i, j, k;
+	for (j = 0; j < grid_size; j++)
+	{
+		for (i = 0; i < grid_size; i++)
+		{
+			if (board.cells[i][j].value == 0)
+			{
+				Cell cell = board.get_markup(j, i);
+				int markup_count = cell.markup[0];
+#pragma omp parallel
+				{
+#pragma for
+					for (k = 1; k <= markup_count; k++)
+					{
+						//printf("%d\n", k);
+						//printf("Tid %d\n", omp_get_thread_num());
+						int value = board.get_kth(cell.markup, k);
 
-// Was thinking about just stopping mid way through the puzzle generation
-// but you have to completely fill in the board before you can validate
-// it, this is why instead I go back and randomly remove cell values.
+						//if (valid_cell_placement(board, j, i, value))
+						//{
+						board.add_value(value, j, i);
+						//printBoard(board);
+
+						int rBoard = fill_cells_markup_parallel(board, use_forced_cells);
+						if (rBoard == 1)
+						{
+							//printBoard(rBoard);
+							//solved = 1;
+							//solved_board = board;
+						}
+						else
+						{
+							board.remove_value(board.cells[i][j].value, j, i);
+							board.valid = -1;
+							if (omp_get_wtime() - t_ser > runtime_threshold) escape = 1;
+						}
+
+						if (escape || solved) k = grid_size + 1;
+					}
+					//board.valid = -1;
+				}
+
+				return 0;
+			}
+		}
+	}
+	int valid = check_valid_board(board);
+	if (!solved && valid) {
+		solved_board = board;
+		solved = 1;
+	}
+	return valid;
+}
+
+//used to generate a random board
 void fill_values(Board &board)
 {
 	//fill_diagonal_boxes(board);
@@ -570,7 +715,7 @@ Board generate_random_board(int clue_count) {
 	t_ser = omp_get_wtime();
 	int cell_count = grid_size * grid_size;
 	fill_values(board);
-	int valid_board = check_valid_board(board).valid;
+	int valid_board = check_valid_board(board);
 	printf("valid? %d\n", valid_board);
 	if (valid_board == 1) {
 		int count = 0;
@@ -598,7 +743,7 @@ Board generate_random_board(int clue_count) {
 }
 
 void brute_force_parallel(Board board) {
-	omp_set_num_threads(grid_size);
+	//omp_set_num_threads(grid_size);
 #pragma omp parallel
 	{
 #pragma omp for
@@ -613,7 +758,7 @@ void brute_force_parallel(Board board) {
 void run_experiment() {
 	ofstream output;
 	output.open("data.csv");
-	output << "runID, size, clue_count, board, alg1Time, alg1Solution, alg1Valid, alg2Time, alg2Solution, alg2Valid, alg3Time, alg3Solution, alg3Valid \n";
+	output << "runID, size, clue_count, board, BFSTime, alg1Solution, alg1Valid, BFPTime, alg2Solution, alg2Valid, MSTime, alg3Solution, alg3Valid, MPTime, alg4Solution, alg4Valid \n";
 	srand(omp_get_wtime());
 	Board board1, board2, board3, board4;
 	double elapsedTime;
@@ -634,62 +779,66 @@ void run_experiment() {
 		board1 = board;
 
 		t_ser = omp_get_wtime();
-		fill_remain_cells(board1);
+		brute_force(board1);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
 
 		printBoard(board1, output);
 
-		valid_solution = check_valid_board(board1).valid;
+		valid_solution = check_valid_board(board1);
 		output << valid_solution << ",";
 
+		//brute force parallel------------------------------------------------------------
+		board2 = board;
+		solved = 0;
+		escape = 0;
 
-		////brute force parallel-------------------------------------------------------
-		//board2 = board;
-		////printBoard(board2, output);
+		t_ser = omp_get_wtime();
 
-		//t_ser = omp_get_wtime();
+		parallel_brute_force(board2);
+		elapsedTime = omp_get_wtime() - t_ser;
+		output << elapsedTime << ",";
 
-		//brute_force_parallel(board2);
-		//elapsedTime = omp_get_wtime() - t_ser;
-		//output << elapsedTime << ",";
+		if (solved) board2 = solved_board;
+		printBoard(board2, output);
 
-
-		//printBoard(solved_board, output);
-
-		//valid_solution = check_valid_board(solved_board).valid;
-		//if (!solved) valid_solution = -1;
-		//output << valid_solution << ",";
+		valid_solution = check_valid_board(board2);
+		output << valid_solution << ",";
 
 		//markup serial------------------------------------------------------------
 		board3 = board;
 
 		t_ser = omp_get_wtime();
 		board3.generate_markup();
-		board3 = fill_cells_markup(board3, 0);
+		/*board3 = fill_cells_markup(board3, 0);*/
+		fill_cells_markup(board3, 0);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
 
 		printBoard(board3, output);
 
-		valid_solution = check_valid_board(board3).valid;
+		valid_solution = check_valid_board(board3);
 		output << valid_solution << ",";
 
-		//markup serial------------------------------------------------------------
+		//markup parallel------------------------------------------------------------
 		board4 = board;
+		solved = 0;
+		escape = 0;
 
 		t_ser = omp_get_wtime();
+
 		board4.generate_markup();
-		board4 = fill_cells_markup(board4, 1);
+		/*board4 = fill_cells_markup(board4, 1);*/
+		fill_cells_markup_parallel(board4, 0);
 		elapsedTime = omp_get_wtime() - t_ser;
 		output << elapsedTime << ",";
 
-
+		if (solved) board4 = solved_board;
 		printBoard(board4, output);
 
-		valid_solution = check_valid_board(board4).valid;
+		valid_solution = check_valid_board(board4);
 		output << valid_solution << ",";
 
 		output << "\n";
@@ -707,15 +856,50 @@ void testing() {
 	srand(time(NULL));
 
 	Board board1 = generate_random_board(clue_count);
-
+	Board board2 = board1;
 
 	/*Board board1;
 	fill_values(board1);*/
+	/*printBoard(board2);
+	brute_force_parallel(board2);
+	printBoard(solved_board);*/
+
+	solved = 0;
+	t_ser = omp_get_wtime();
 	printBoard(board1);
 	board1.generate_markup();
 	board1.check_forced_cells();
+
 	//print_all_markup(board1);
-	board1 = fill_cells_markup(board1, 0);
+	fill_cells_markup_parallel(board1, 0);
+	//int valid_board = ;
+	board1 = solved_board;
+	printf("valid? %d\n", check_valid_board(board1));
+	printBoard(board1);
+	//print_all_markup(board1);
+}
+
+void testing_brute_force() {
+
+	t_ser = omp_get_wtime();
+	srand(time(NULL));
+
+	Board board1 = generate_random_board(clue_count);
+	Board board2 = board1;
+
+	/*Board board1;
+	fill_values(board1);*/
+	/*printBoard(board2);
+	brute_force_parallel(board2);
+	printBoard(solved_board);*/
+
+	t_ser = omp_get_wtime();
+	printBoard(board1);
+
+
+	//print_all_markup(board1);
+	parallel_brute_force(board1);
+	board1 = solved_board;
 	//int valid_board = ;
 	printf("valid? %d\n", check_valid_board(board1));
 	printBoard(board1);
@@ -723,10 +907,12 @@ void testing() {
 }
 
 int* res() {
-	//#pragma omp parallel
-	//	{
-	//		res();
-	//	}
+#pragma omp parallel
+	{
+		res();
+
+
+	}
 	int test[3]; // = { 8,9,3 };;
 	for (int i = 0; i < 3; i++) {
 		test[i] = i;
@@ -737,23 +923,23 @@ int* res() {
 int main()
 {
 	printf("-----------------------------------------test begins----------------------------------------------\n");
-
+	omp_set_num_threads(P);
+	//res();
 	run_experiment();
+	//testing_brute_force();
 	//testing();
 
-	/*int* test = res();
-	for (int i = 0; i < 3; i++) {
 
-		printf("%d ", test[0 ]);
-	}*/
+//#pragma omp parallel
+//	{
+//#pragma for
+//		for (int i = 0; i < 9; i++) {
+//			//printf("%d\n", i);
+//			printf("Tid %d\n", omp_get_thread_num());
+//		}
+//	}
 
 
-	// 	omp_set_num_threads(8);
-	// #pragma omp parallel
-	// 	{
-	// 		int tid = omp_get_thread_num();
-	// 		printf("%d\n", tid);
-	// 	}
 
 	return 0;
 }
