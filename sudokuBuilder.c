@@ -1,7 +1,7 @@
 // SudokuBuilder.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-//#include "pch.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -13,11 +13,11 @@
 using namespace std;
 
 
-int const grid_size = 16;
-int clue_count = 54;
+int const grid_size = 9;
+int clue_count = 14;
 int runtime_threshold = 10;
 int const experiment_ephochs = 100;
-int const P = 16;
+int const P = 9;
 
 double t_ser;
 
@@ -76,16 +76,7 @@ public:
 
 		return cells[col][row];
 	}
-	/*int* get_row_markup(int row) {
-		return rows[row];
-	}
-	int* get_col_markup(int col) {
-		return cols[col];
-	}
-	int* get_box_markup(int row, int col) {
-		int box_id = get_box_id(row, col);
-		return boxes[box_id];
-	}*/
+
 	Cell get_markup(int row, int col) {
 		Cell cell = cells[col][row];
 		//int markup[grid_size + 1];
@@ -917,38 +908,15 @@ void testing_brute_force() {
 	//print_all_markup(board1);
 }
 
-//int* res() {
-//#pragma omp parallel
-//	{
-//		res();
-//
-//
-//	}
-//	int test[3]; // = { 8,9,3 };;
-//	for (int i = 0; i < 3; i++) {
-//		test[i] = i;
-//	}
-//	return test;
-//}
 
 int main()
 {
 	printf("-----------------------------------------test begins----------------------------------------------\n");
 	omp_set_num_threads(P);
-	//res();
 	run_experiment();
 	//testing_brute_force();
 	//testing();
 
-
-//#pragma omp parallel
-//	{
-//#pragma for
-//		for (int i = 0; i < 9; i++) {
-//			//printf("%d\n", i);
-//			printf("Tid %d\n", omp_get_thread_num());
-//		}
-//	}
 
 
 
